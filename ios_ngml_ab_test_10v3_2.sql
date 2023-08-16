@@ -1,3 +1,5 @@
+-- dagger pipeline: https://dagger.liftoff.io/pipelines/1523
+
 WITH test_info AS
 (SELECT
 	1100 AS ab_test_id,
@@ -25,7 +27,7 @@ WITH test_info AS
   , c.id AS campaign_id
   , cc.sales_region__c AS sales_region
   , cc.sales_sub_region__c AS sales_sub_region
-  , o.scale_zone__c AS scale_zone
+  , o.scale_zone__c as scale_zone
  FROM pinpoint.public.campaigns c 
  LEFT JOIN salesforce_daily.customer_campaign__c cc
  	ON cc.campaign_id_18_digit__c = c.salesforce_campaign_id
@@ -51,7 +53,7 @@ WITH test_info AS
     ORDER BY 1,2 ASC)
     WHERE rn = 1
 )
-, uncapped_cohorted_rev_per_auction AS
+, uncapped_rev_per_auction AS
 (SELECT
 COALESCE(install__ad_click__impression__auction_id,reeng_click__impression__auction_id) AS auction_id
 , CONCAT(SUBSTR(to_iso8601(date_trunc('hour', FROM_unixtime(COALESCE(install__ad_click__impression__at, reeng_click__impression__at)/1000, 'UTC'))),1,19),'Z') AS impression_at
@@ -84,15 +86,14 @@ COALESCE(install__ad_click__impression__auction_id,reeng_click__impression__auct
 --, COALESCE(install__ad_click__impression__bid__app_platform, reeng_click__impression__bid__app_platform,attribution_event__click__impression__bid__app_platform) AS platform
 --, COALESCE(install__ad_click__impression__bid__ad_group_type,reeng_click__impression__bid__ad_group_type,attribution_event__click__impression__bid__ad_group_type) AS ad_group_type
 
-, sum(IF(for_reporting AND at - COALESCE(install__ad_click__impression__at,reeng_click__impression__at) < 604800000 AND custom_event_id = COALESCE(install__ad_click__impression__bid__campaign_target_event_id, reeng_click__impression__bid__campaign_target_event_id),1,0)) AS target_events_d7_imp
-, sum(IF(for_reporting AND at - COALESCE(install__ad_click__impression__at,reeng_click__impression__at) < 604800000 AND custom_event_id = COALESCE(install__ad_click__impression__bid__campaign_target_event_id, reeng_click__impression__bid__campaign_target_event_id) AND first_occurrence,1,0)) AS target_events_first_d7_imp
-, CAST(sum(CASE WHEN at - COALESCE(install__ad_click__impression__at,reeng_click__impression__at) < 604800000 AND for_reporting AND customer_revenue_micros > -100000000000 AND customer_revenue_micros < 100000000000 AND customer_revenue_micros != 0 
-			    THEN customer_revenue_micros ELSE 0 END) AS double) / 1e6 AS customer_revenue_d7_imp	    
+, sum(IF(for_reporting AND custom_event_id = COALESCE(install__ad_click__impression__bid__campaign_target_event_id, reeng_click__impression__bid__campaign_target_event_id),1,0)) AS target_events
+, sum(IF(for_reporting AND custom_event_id = COALESCE(install__ad_click__impression__bid__campaign_target_event_id, reeng_click__impression__bid__campaign_target_event_id) AND first_occurrence,1,0)) AS target_events_first
+, sum(IF(for_reporting AND customer_revenue_micros > -100000000000 AND customer_revenue_micros < 100000000000 AND customer_revenue_micros != 0,customer_revenue_micros)) AS customer_revenue_micros
 FROM rtb.matched_app_events ae
 CROSS JOIN UNNEST(COALESCE(install__ad_click__impression__bid__bid_request__ab_test_assignments,
 						   reeng_click__impression__bid__bid_request__ab_test_assignments)) t
-WHERE dt >= '{{ dt }}' AND dt < '{{ dt_add(dt, hours = 1) }}'
---dt >= '2023-08-14T00' AND dt < '2023-08-14T02'
+WHERE dt >= '{{ dt }}' AND dt < '{{ dt_add(dt, hours=1) }}'
+--dt >= '2023-08-02T12' AND dt < '2023-08-14T00'
 AND is_uncredited <> TRUE
 AND at - COALESCE(install__ad_click__impression__at, reeng_click__impression__at) < 604800000
 AND t.id = (SELECT ab_test_id FROM test_info)            
@@ -139,11 +140,11 @@ CONCAT(SUBSTR(to_iso8601(date_trunc('hour', FROM_unixtime(at/1000, 'UTC'))),1,19
 , sum(revenue_micros) AS revenue_micros
 , sum(0) AS clicks
 , sum(0) AS installs
-, sum(0) AS target_events_d7_imp
-, sum(0) AS target_events_first_d7_imp
-, sum(0) AS customer_revenue_d7_imp
-, sum(0) AS capped_customer_revenue_d7_imp
-, sum(0) AS squared_capped_customer_revenue_d7_imp
+, sum(0) AS target_events
+, sum(0) AS target_events_first
+, sum(0) AS customer_revenue_micros
+, sum(0) AS capped_customer_revenue_micros
+, sum(0) AS squared_capped_customer_revenue
 , sum(CASE WHEN COALESCE(bid__bid_request__device__platform_specific_id_sha1,'') <> '' THEN 1
            WHEN COALESCE(bid__bid_request__device__idfv, '') <>'' THEN 1
            WHEN COALESCE(bid__bid_request__pods__app_specific_id__id,'') <> '' THEN 1
@@ -173,7 +174,7 @@ CONCAT(SUBSTR(to_iso8601(date_trunc('hour', FROM_unixtime(at/1000, 'UTC'))),1,19
 FROM rtb.impressions_with_bids i
 CROSS JOIN UNNEST(bid__bid_request__ab_test_assignments) t
 WHERE dt >= '{{ dt }}' AND dt < '{{ dt_add(dt, hours = 1) }}'
---dt >= '2023-08-14T00' AND dt < '2023-08-14T02'
+--dt >= '2023-08-02T12' AND dt < '2023-08-14T00'
 AND t.id = (SELECT ab_test_id FROM test_info)
 AND bid__app_platform = 'IOS'
 AND bid__ad_group_type = 'user-acquisition'
@@ -217,11 +218,11 @@ CONCAT(substr(to_iso8601(date_trunc('hour', from_unixtime(impression__at/1000, '
 , sum(0) AS revenue_micros
 , sum(1) AS clicks
 , sum(0) AS installs
-, sum(0) AS target_events_d7_imp
-, sum(0) AS target_events_first_d7_imp
-, sum(0) AS customer_revenue_d7_imp
-, sum(0) AS capped_customer_revenue_d7_imp
-, sum(0) AS squared_capped_customer_revenue_d7_imp
+, sum(0) AS target_events
+, sum(0) AS target_events_first
+, sum(0) AS customer_revenue_micros
+, sum(0) AS capped_customer_revenue_micros
+, sum(0) AS squared_capped_customer_revenue
 , sum(0) AS num_users
 , sum(0) AS predicted_conversion_likelihood
 , sum(0) AS preshaded_cpm
@@ -237,7 +238,7 @@ CONCAT(substr(to_iso8601(date_trunc('hour', from_unixtime(impression__at/1000, '
 FROM rtb.ad_clicks ac
 CROSS JOIN UNNEST(impression__bid__bid_request__ab_test_assignments) t
 WHERE dt >= '{{ dt }}' AND dt < '{{ dt_add(dt, hours = 1) }}'
---dt >= '2023-08-14T00' AND dt < '2023-08-14T02'
+--dt >= '2023-08-02T12' AND dt < '2023-08-14T00'
 AND t.id = (SELECT ab_test_id FROM test_info)
 AND at - impression__at < 2592000000
 AND impression__bid__app_platform = 'IOS'
@@ -282,11 +283,11 @@ ELSE 'html-interstitial' end AS ad_format
 , sum(0) AS revenue_micros
 , sum(0) AS clicks
 , sum(IF(for_reporting, 1, 0)) AS installs
-, sum(0) AS target_events_d7_imp
-, sum(0) AS target_events_first_d7_imp
-, sum(0) AS customer_revenue_d7_imp
-, sum(0) AS capped_customer_revenue_d7_imp
-, sum(0) AS squared_capped_customer_revenue_d7_imp
+, sum(0) AS target_events
+, sum(0) AS target_events_first
+, sum(0) AS customer_revenue_micros
+, sum(0) AS capped_customer_revenue_micros
+, sum(0) AS squared_capped_customer_revenue
 , sum(0) AS num_users
 , sum(0) AS predicted_conversion_likelihood
 , sum(0) AS preshaded_cpm
@@ -302,7 +303,7 @@ ELSE 'html-interstitial' end AS ad_format
 FROM rtb.matched_installs mi
 CROSS JOIN UNNEST(ad_click__impression__bid__bid_request__ab_test_assignments) t
 WHERE dt >= '{{ dt }}' AND dt < '{{ dt_add(dt, hours = 1) }}'
---dt >= '2023-08-14T00' AND dt < '2023-08-14T02'
+--dt >= '2023-08-02T12' AND dt < '2023-08-14T00'
 AND is_uncredited <> TRUE
 AND t.id = (SELECT ab_test_id FROM test_info)
 AND at - ad_click__impression__at < 2592000000
@@ -343,11 +344,11 @@ impression_at
 , sum(0) AS revenue_micros
 , sum(0) AS clicks
 , sum(0) AS installs
-, sum(target_events_d7_imp) AS target_events_d7_imp
-, sum(target_events_first_d7_imp) AS target_events_first_d7_imp
-, sum(customer_revenue_d7_imp) AS customer_revenue_d7_imp
-, sum(LEAST(customer_revenue_d7_imp, 500)) AS capped_customer_revenue_d7_imp
-, sum(LEAST(customer_revenue_d7_imp, 500) * LEAST(customer_revenue_d7_imp, 500)) AS squared_capped_customer_revenue_d7_imp
+, sum(target_events) AS target_events
+, sum(target_events_first) AS target_events_first
+, sum(customer_revenue_micros) AS customer_revenue_micros
+, sum(least(customer_revenue_micros,500000000)) AS capped_customer_revenue_micros
+, sum(power(least(CAST(customer_revenue_micros AS double)/1000000,500),2)) AS squared_capped_customer_revenue
 , sum(0) AS num_users
 , sum(0) AS predicted_conversion_likelihood
 , sum(0) AS preshaded_cpm
@@ -360,7 +361,7 @@ impression_at
 , sum(0) AS predicted_target_events_vt
 , sum(0) AS predicted_customer_revenue_micros_ct
 , sum(0) AS predicted_customer_revenue_micros_vt
-FROM uncapped_cohorted_rev_per_auction u
+FROM uncapped_rev_per_auction u
 GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
 )
 
@@ -406,11 +407,11 @@ impression_at
 , sum(revenue_micros) AS revenue_micros
 , sum(clicks) AS clicks
 , sum(installs) AS installs
-, sum(target_events_d7_imp) AS target_events_d7_imp
-, sum(target_events_first_d7_imp) AS target_events_first_d7_imp
-, sum(customer_revenue_d7_imp) AS customer_revenue_d7_imp
-, sum(capped_customer_revenue_d7_imp) AS capped_customer_revenue_d7_imp
-, sum(squared_capped_customer_revenue_d7_imp) AS squared_capped_customer_revenue_d7_imp
+, sum(target_events) AS target_events
+, sum(target_events_first) AS target_events_first
+, sum(customer_revenue_micros) AS customer_revenue_micros
+, sum(capped_customer_revenue_micros) AS capped_customer_revenue_micros
+, sum(squared_capped_customer_revenue) AS squared_capped_customer_revenue
 , sum(num_users) AS num_users
 , sum(predicted_conversion_likelihood) AS predicted_conversion_likelihood
 , sum(preshaded_cpm) AS preshaded_cpm
@@ -423,6 +424,11 @@ impression_at
 , sum(predicted_target_events_vt) AS predicted_target_events_vt
 , sum(predicted_customer_revenue_micros_ct) AS predicted_customer_revenue_micros_ct
 , sum(predicted_customer_revenue_micros_vt) AS predicted_customer_revenue_micros_vt
+, sum(IF(from_iso8601_timestamp(at) - from_iso8601_timestamp(impression_at) < INTERVAL '7' DAY, CAST(customer_revenue_micros AS double)/1000000, 0)) AS customer_revenue_d7_imp
+, sum(IF(from_iso8601_timestamp(at) - from_iso8601_timestamp(impression_at) < INTERVAL '7' DAY, target_events_first, 0)) AS target_events_first_d7_imp
+, sum(IF(from_iso8601_timestamp(at) - from_iso8601_timestamp(impression_at) < INTERVAL '30' DAY, target_events_first, 0)) AS target_events_first_d30_imp
+, sum(IF(from_iso8601_timestamp(at) - from_iso8601_timestamp(impression_at) < INTERVAL '7' DAY, CAST(capped_customer_revenue_micros AS double)/1000000, 0)) AS capped_customer_revenue_d7_imp
+, sum(IF(from_iso8601_timestamp(at) - from_iso8601_timestamp(impression_at) < INTERVAL '7' DAY, CAST(squared_capped_customer_revenue AS double), 0)) AS squared_capped_customer_revenue_d7_imp
 FROM funnel a
 LEFT JOIN pinpoint.public.customers b
   ON a.customer_id = b.id
@@ -442,5 +448,5 @@ LEFT JOIN pinpoint.public.trackers trackers
   ON trackers.id = cc.tracker_id
 WHERE IF(trackers.name = 'apple-skan', 'SKAN', IF(trackers.name = 'no-tracker', 'NON-MEASURABLE', IF(a.campaign_id is null, 'N/A', 'MMP'))) != 'SKAN'
 AND ct.name = 'user-acquisition'
-AND impression_at > '2023-08-04T23' -- depending on tests
+AND impression_at > '2023-08-04T12' 
 GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
