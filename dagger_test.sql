@@ -1,4 +1,4 @@
--- I was using this query to pull results (~3min)
+-- I was using this query to pull results (~4 mins)
 WITH a AS (
 SELECT
 COALESCE(install__ad_click__impression__auction_id,reeng_click__impression__auction_id) AS auction_id
@@ -48,7 +48,7 @@ SELECT ab_test_group_id
 FROM dagger 
 WHERE impression_at >= '2023-08-05T00'
 AND impression_at <'2023-08-13T00'
---AND campaign_id = 20186
+--AND campaign_id = 27890
 GROUP BY 1
 
 -- I was using this query to pull results from dagger table (~2 secs)
@@ -60,7 +60,7 @@ WHERE
 dt >= '2023-08-05T00' 
 AND impression_at >='2023-08-05T00'
 AND impression_at < '2023-08-13T00'
---AND campaign_id IN (20186)
+--AND campaign_id IN (27890)
 GROUP BY 1
 ORDER BY 1
 
