@@ -1,6 +1,9 @@
 # codes used in superset
 
-select cast(ec.logged_at as DATE ) as date,
+select count(DISTINCT case when new_drl > old_drl THEN campaign_id END)
+, count(DISTINCT campaign_id)
+from (select c.id AS campaign_id 
+, cast(ec.logged_at as DATE ) as date,
   ec.old_values -> 'daily_revenue_limit'  as old_drl,
   ec.new_values -> 'daily_revenue_limit'  as new_drl
 FROM elephant_changes ec
@@ -8,8 +11,9 @@ FROM elephant_changes ec
 WHERE ec.operation = 'update'
   AND ec.table_name IN ('campaigns')
   AND ec.old_values -> 'daily_revenue_limit' is not null
-  and c.id = 24664
  order by 1
+ ) as T
+ where date between '2023-07-01' and '2023-10-01'
  
  
  
