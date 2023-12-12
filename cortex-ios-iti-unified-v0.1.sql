@@ -22,7 +22,7 @@ upper_funnel_reduced AS (
     u.campaign_tracker_type, -- MMP, Direct, etc
     u.exchange,
     u.test_id,
-    u.test_group_id,
+    u.test_group_id, -- id of ctrl and exp (can be checked in Rigger)
     u.test_group,
     u.bid_date,
     u.dest_app_id,
